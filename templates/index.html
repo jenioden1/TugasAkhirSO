@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hardware Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/js/all.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <header class="mb-8">
+            <div class="flex flex-col md:flex-row items-center justify-between">
+                <div class="flex items-center mb-4 md:mb-0">
+                    <i class="fas fa-microchip text-4xl text-blue-500 mr-3"></i>
+                    <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 text-transparent bg-clip-text">Hardware Monitor</h1>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="current-time" class="text-gray-300"></span>
+                    <span class="px-3 py-1 bg-blue-600 rounded-full text-sm font-semibold">Live</span>
+                </div>
+            </div>
+            <div class="mt-4 bg-gray-800 p-4 rounded-lg shadow-lg">
+                <div class="flex flex-col md:flex-row justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-200" id="system-name"></h2>
+                        <p class="text-gray-400" id="system-info"></p>
+                    </div>
+                    <div class="mt-3 md:mt-0">
+                        <p class="text-gray-400">Uptime: <span id="uptime" class="text-green-400 font-mono"></span></p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- CPU Section -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 border-t-2 border-blue-500">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-blue-400"><i class="fas fa-microchip mr-2"></i>CPU Information</h2>
+                    <span class="px-2 py-1 bg-blue-900 rounded text-xs" id="cpu-arch"></span>
+                </div>
+                
+                <div class="mb-4">
+                    <h3 id="cpu-name" class="text-lg font-semibold mb-2"></h3>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div class="bg-gray-700 p-2 rounded">
+                            <span class="text-gray-400 text-sm">Physical Cores</span>
+                            <p id="physical-cores" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-2 rounded">
+                            <span class="text-gray-400 text-sm">Logical Cores</span>
+                            <p id="logical-cores" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-2 rounded">
+                            <span class="text-gray-400 text-sm">Base Frequency</span>
+                            <p id="min-freq" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-2 rounded">
+                            <span class="text-gray-400 text-sm">Max Frequency</span>
+                            <p id="max-freq" class="font-mono text-lg"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <h3 class="font-semibold">Current Usage</h3>
+                        <span class="text-xl font-bold" id="cpu-usage-percent"></span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-4">
+                        <div id="cpu-usage-bar" class="bg-gradient-to-r from-green-400 to-blue-500 h-4 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <h3 class="font-semibold mb-2">Core Usage</h3>
+                    <div id="cpu-cores-usage" class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <!-- Core usage bars will be inserted here -->
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="font-semibold mb-2">Top CPU Processes</h3>
+                    <div class="bg-gray-700 rounded overflow-hidden">
+                        <table class="min-w-full">
+                            <thead>
+                                <tr class="bg-gray-600">
+                                    <th class="py-2 px-3 text-left text-sm font-semibold">Process</th>
+                                    <th class="py-2 px-3 text-left text-sm font-semibold">PID</th>
+                                    <th class="py-2 px-3 text-left text-sm font-semibold">CPU Usage</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cpu-processes">
+                                <!-- Process data will be inserted here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- GPU Section -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 border-t-2 border-purple-500">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-purple-400"><i class="fas fa-tv mr-2"></i>GPU Information</h2>
+                </div>
+                
+                <div id="gpu-info-container">
+                    <h3 id="gpu-name" class="text-lg font-semibold mb-4"></h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-gray-400">Memory Usage</span>
+                                    <span id="gpu-memory-percent" class="text-sm font-mono"></span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-3">
+                                    <div id="gpu-memory-bar" class="bg-gradient-to-r from-purple-400 to-pink-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                                <div class="flex justify-between text-xs mt-1">
+                                    <span id="gpu-memory-used"></span>
+                                    <span id="gpu-memory-total"></span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-gray-400">GPU Utilization</span>
+                                    <span id="gpu-util-percent" class="text-sm font-mono"></span>
+                                </div>
+                                <div class="w-full bg-gray-700 rounded-full h-3">
+                                    <div id="gpu-util-bar" class="bg-gradient-to-r from-yellow-400 to-red-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-700 rounded-lg p-3">
+                            <div class="flex items-center justify-center h-full">
+                                <div class="text-center">
+                                    <div class="text-gray-400 mb-1">Temperature</div>
+                                    <div id="gpu-temp-gauge" class="inline-flex items-center justify-center">
+                                        <span id="gpu-temp" class="text-3xl font-bold"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="no-gpu-message" class="hidden text-center py-8">
+                    <i class="fas fa-exclamation-circle text-yellow-500 text-4xl mb-3"></i>
+                    <p class="text-lg">No GPU detected or information unavailable</p>
+                </div>
+            </div>
+            
+            <!-- Memory Section -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 border-t-2 border-green-500">
+                <h2 class="text-xl font-bold text-green-400 mb-4"><i class="fas fa-memory mr-2"></i>Memory Information</h2>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-gray-400">RAM Usage</span>
+                        <span id="ram-percent" class="text-sm font-mono"></span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3">
+                        <div id="ram-usage-bar" class="bg-gradient-to-r from-green-400 to-teal-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs mt-1">
+                        <span id="ram-used"></span>
+                        <span id="ram-total"></span>
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-gray-400">Swap Usage</span>
+                        <span id="swap-percent" class="text-sm font-mono"></span>
+                    </div>
+                    <div class="w-full bg-gray-700 rounded-full h-3">
+                        <div id="swap-usage-bar" class="bg-gradient-to-r from-teal-400 to-cyan-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div class="flex justify-between text-xs mt-1">
+                        <span id="swap-used"></span>
+                        <span id="swap-total"></span>
+                    </div>
+                </div>
+                
+                <div class="mt-5">
+                    <h3 class="font-semibold mb-2 text-gray-300">Memory Details</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Available</span>
+                            <p id="ram-available" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Used</span>
+                            <p id="ram-used-detail" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Swap Free</span>
+                            <p id="swap-free" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Swap Used</span>
+                            <p id="swap-used-detail" class="font-mono text-lg"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Storage Section -->
+            <div class="bg-gray-800 rounded-lg shadow-lg p-4 border-t-2 border-amber-500">
+                <h2 class="text-xl font-bold text-amber-400 mb-4"><i class="fas fa-hdd mr-2"></i>Storage Information</h2>
+                
+                <div id="disk-partitions" class="space-y-4">
+                    <!-- Disk partitions will be inserted here -->
+                </div>
+                
+                <div class="mt-5">
+                    <h3 class="font-semibold mb-2 text-gray-300">Disk I/O</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Total Read</span>
+                            <p id="disk-read" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Total Write</span>
+                            <p id="disk-write" class="font-mono text-lg"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Network Section -->
+        <div class="mt-6 bg-gray-800 rounded-lg shadow-lg p-4 border-t-2 border-indigo-500">
+            <h2 class="text-xl font-bold text-indigo-400 mb-4"><i class="fas fa-network-wired mr-2"></i>Network Information</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <h3 class="font-semibold mb-2 text-gray-300">Network Interfaces</h3>
+                    <div id="network-interfaces" class="space-y-3">
+                        <!-- Network interfaces will be inserted here -->
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="font-semibold mb-2 text-gray-300">Network Traffic</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Total Sent</span>
+                            <p id="net-sent" class="font-mono text-lg"></p>
+                        </div>
+                        <div class="bg-gray-700 p-3 rounded">
+                            <span class="text-gray-400 text-sm">Total Received</span>
+                            <p id="net-recv" class="font-mono text-lg"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="mt-8 text-center text-gray-500 text-sm">
+            <p>Created with Python, Flask & Tailwind CSS</p>
+            <p class="mt-1">Hardware Monitor v1.0</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
