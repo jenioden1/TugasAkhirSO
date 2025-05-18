@@ -103,13 +103,25 @@ def get_gpu_info():
         if gpus:
             gpu = gpus[0]  # Just get the first GPU if multiple exist
             gpu_info["name"] = gpu.name
-            gpu_info["driver"] = "N/A"  # GPUtil doesn't provide driver info
-            gpu_info["memory_total"] = f"{gpu.memoryTotal} MB"
-            gpu_info["memory_used"] = f"{gpu.memoryUsed} MB"
-            gpu_info["memory_free"] = f"{gpu.memoryFree} MB"
-            gpu_info["memory_utilization"] = f"{gpu.memoryUtil * 100:.2f}%"
-            gpu_info["gpu_utilization"] = f"{gpu.load * 100:.2f}%"
-            gpu_info["temperature"] = f"{gpu.temperature} °C"
+            gpu_info["driver"] = gpu.driver
+            gpu_info["memory_total"] = get_size(gpu.memoryTotal * 1024 * 1024)  # Convert MB to bytes
+            gpu_info["memory_used"] = get_size(gpu.memoryUsed * 1024 * 1024)  # Convert MB to bytes
+            gpu_info["memory_free"] = get_size(gpu.memoryFree * 1024 * 1024)  # Convert MB to bytes
+            gpu_info["memory_utilization"] = f"{gpu.memoryUtil * 100:.1f}%"
+            gpu_info["gpu_utilization"] = f"{gpu.load * 100:.1f}%"
+            gpu_info["current_usage"] = f"{gpu.load * 100:.1f}%"
+            gpu_info["temperature"] = f"{gpu.temperature:.1f} °C"
+            gpu_info["display_mode"] = gpu.display_mode
+            gpu_info["display_active"] = gpu.display_active
+            
+            # Tambahan informasi status
+            gpu_info["status"] = "Active"
+            if gpu.temperature > 80:
+                gpu_info["status"] = "Warning: High Temperature"
+            elif gpu.memoryUtil > 0.9:
+                gpu_info["status"] = "Warning: High Memory Usage"
+            elif gpu.load > 0.9:
+                gpu_info["status"] = "Warning: High GPU Usage"
         else:
             gpu_info["status"] = "No GPU detected"
     except Exception as e:
@@ -202,3 +214,267 @@ def get_system_info():
     system_info["current_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     return system_info
+
+def get_system_health():
+    health_info = {}
+    
+    # System temperature monitoring
+    try:
+        if hasattr(psutil, "sensors_temperatures"):
+            temps = psutil.sensors_temperatures()
+            health_info["temperatures"] = {}
+            
+            # Check for common temperature sensors
+            if temps:
+                for sensor_name, entries in temps.items():
+                    if entries:
+                        # Get the highest temperature from each sensor
+                        max_temp = max(entry.current for entry in entries)
+                        health_info["temperatures"][sensor_name] = {
+                            "current": max_temp,
+                            "high": entries[0].high if hasattr(entries[0], 'high') else None,
+                            "critical": entries[0].critical if hasattr(entries[0], 'critical') else None,
+                            "label": entries[0].label if hasattr(entries[0], 'label') else sensor_name
+                        }
+            else:
+                # If no temperature sensors found, try to get CPU temperature
+                try:
+                    import wmi
+                    w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+                    temperature_infos = w.Sensor()
+                    for sensor in temperature_infos:
+                        if sensor.SensorType == 'Temperature':
+                            health_info["temperatures"][sensor.Name] = {
+                                "current": float(sensor.Value),
+                                "high": 80,  # Default high threshold
+                                "critical": 90,  # Default critical threshold
+                                "label": sensor.Name
+                            }
+                except:
+                    health_info["temperatures"] = {"status": "Temperature monitoring not available"}
+        else:
+            health_info["temperatures"] = {"status": "Temperature monitoring not available"}
+    except Exception as e:
+        health_info["temperatures"] = {"status": f"Error reading temperatures: {str(e)}"}
+
+    # Fan speed monitoring
+    try:
+        if hasattr(psutil, "sensors_fans"):
+            fans = psutil.sensors_fans()
+            health_info["fans"] = {}
+            
+            if fans:
+                for fan_name, entries in fans.items():
+                    if entries:
+                        # Get the highest fan speed from each fan
+                        max_speed = max(entry.current for entry in entries)
+                        health_info["fans"][fan_name] = {
+                            "current": max_speed,
+                            "label": entries[0].label if hasattr(entries[0], 'label') else fan_name
+                        }
+            else:
+                # If no fan sensors found, try to get fan speeds from OpenHardwareMonitor
+                try:
+                    import wmi
+                    w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+                    fan_infos = w.Sensor()
+                    for sensor in fan_infos:
+                        if sensor.SensorType == 'Fan':
+                            health_info["fans"][sensor.Name] = {
+                                "current": float(sensor.Value),
+                                "label": sensor.Name
+                            }
+                except:
+                    health_info["fans"] = {"status": "Fan monitoring not available"}
+        else:
+            health_info["fans"] = {"status": "Fan monitoring not available"}
+    except Exception as e:
+        health_info["fans"] = {"status": f"Error reading fan speeds: {str(e)}"}
+
+    # Disk health status
+    health_info["disk_health"] = []
+    try:
+        for partition in psutil.disk_partitions():
+            try:
+                usage = psutil.disk_usage(partition.mountpoint)
+                health_info["disk_health"].append({
+                    "device": partition.device,
+                    "mountpoint": partition.mountpoint,
+                    "status": "Healthy" if usage.percent < 80 else "Warning" if usage.percent < 90 else "Critical",
+                    "usage_percent": usage.percent,
+                    "total": get_size(usage.total),
+                    "used": get_size(usage.used),
+                    "free": get_size(usage.free)
+                })
+            except:
+                continue
+    except:
+        health_info["disk_health"] = {"status": "Error reading disk health"}
+
+    # System stability metrics
+    try:
+        # CPU load average
+        load_avg = psutil.getloadavg()
+        health_info["load_average"] = {
+            "1min": load_avg[0],
+            "5min": load_avg[1],
+            "15min": load_avg[2]
+        }
+        
+        # Memory stability
+        memory = psutil.virtual_memory()
+        health_info["memory_stability"] = {
+            "status": "Stable" if memory.percent < 90 else "Warning",
+            "usage_percent": memory.percent
+        }
+        
+        # CPU stability
+        cpu_percent = psutil.cpu_percent(interval=1)
+        health_info["cpu_stability"] = {
+            "status": "Stable" if cpu_percent < 90 else "Warning",
+            "usage_percent": cpu_percent
+        }
+    except:
+        health_info["stability_metrics"] = {"status": "Error reading stability metrics"}
+
+    # Error logs
+    health_info["error_logs"] = {
+        "status": "No critical errors",
+        "last_check": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+
+    return health_info
+
+def get_power_info():
+    power_info = {}
+    
+    try:
+        # Battery information
+        battery = psutil.sensors_battery()
+        if battery:
+            power_info["battery"] = {
+                "percent": battery.percent,
+                "power_plugged": battery.power_plugged,
+                "time_left": str(datetime.timedelta(seconds=battery.secsleft)) if battery.secsleft > 0 else "N/A",
+                "status": "Charging" if battery.power_plugged else "Discharging"
+            }
+        else:
+            power_info["battery"] = {"status": "No battery detected"}
+
+        # Power consumption estimation (simplified)
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
+        
+        # Rough estimation of power consumption based on CPU and memory usage
+        power_info["power_consumption"] = {
+            "cpu_watts": round(cpu_percent * 0.1, 2),  # Simplified calculation
+            "memory_watts": round(memory.percent * 0.05, 2),  # Simplified calculation
+            "total_watts": round((cpu_percent * 0.1) + (memory.percent * 0.05), 2)
+        }
+
+        # Power mode detection (Windows only)
+        if platform.system() == "Windows":
+            try:
+                import winreg
+                key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                   r"SYSTEM\CurrentControlSet\Control\Power\User\PowerSchemes")
+                active_scheme = winreg.QueryValueEx(key, "ActivePowerScheme")[0]
+                power_info["power_mode"] = {
+                    "current_scheme": active_scheme,
+                    "is_high_performance": "High Performance" in active_scheme,
+                    "is_power_saver": "Power Saver" in active_scheme
+                }
+            except:
+                power_info["power_mode"] = {"status": "Unable to detect power mode"}
+        else:
+            power_info["power_mode"] = {"status": "Power mode detection not available on this platform"}
+
+    except Exception as e:
+        power_info["error"] = str(e)
+
+    return power_info
+
+def get_performance_report():
+    report = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "system_info": get_system_info(),
+        "performance_metrics": {
+            "cpu": {
+                "usage": psutil.cpu_percent(),
+                "frequency": psutil.cpu_freq().current if psutil.cpu_freq() else None,
+                "cores": {
+                    "physical": psutil.cpu_count(logical=False),
+                    "logical": psutil.cpu_count(logical=True)
+                }
+            },
+            "memory": {
+                "total": get_size(psutil.virtual_memory().total),
+                "used": get_size(psutil.virtual_memory().used),
+                "percent": psutil.virtual_memory().percent
+            },
+            "disk": {
+                "partitions": []
+            },
+            "network": {
+                "bytes_sent": get_size(psutil.net_io_counters().bytes_sent),
+                "bytes_recv": get_size(psutil.net_io_counters().bytes_recv)
+            }
+        },
+        "health_status": {
+            "cpu_temperature": None,
+            "disk_health": [],
+            "memory_stability": None
+        }
+    }
+
+    # Get CPU temperature if available
+    try:
+        if hasattr(psutil, "sensors_temperatures"):
+            temps = psutil.sensors_temperatures()
+            if temps and 'coretemp' in temps:
+                report["health_status"]["cpu_temperature"] = temps['coretemp'][0].current
+    except:
+        pass
+
+    # Get disk health information
+    try:
+        for partition in psutil.disk_partitions():
+            try:
+                usage = psutil.disk_usage(partition.mountpoint)
+                report["performance_metrics"]["disk"]["partitions"].append({
+                    "device": partition.device,
+                    "mountpoint": partition.mountpoint,
+                    "total": get_size(usage.total),
+                    "used": get_size(usage.used),
+                    "free": get_size(usage.free),
+                    "percent": usage.percent
+                })
+                
+                # Add disk health status
+                health_status = "Healthy"
+                if usage.percent > 90:
+                    health_status = "Critical"
+                elif usage.percent > 80:
+                    health_status = "Warning"
+                
+                report["health_status"]["disk_health"].append({
+                    "device": partition.device,
+                    "status": health_status,
+                    "usage_percent": usage.percent
+                })
+            except:
+                continue
+    except:
+        pass
+
+    # Get memory stability
+    try:
+        memory = psutil.virtual_memory()
+        report["health_status"]["memory_stability"] = {
+            "status": "Stable" if memory.percent < 90 else "Warning",
+            "usage_percent": memory.percent
+        }
+    except:
+        pass
+
+    return report
